@@ -2,12 +2,11 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from youtube_transcript_api import YouTubeTranscriptApi,TranscriptsDisabled
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings,GoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
-from youtube_transcript_api.proxies import WebshareProxyConfig
 import asyncio
 from langchain_core.runnables import (
     RunnableParallel,
@@ -22,7 +21,32 @@ from langchain_core.messages import (
 )
 from langchain_google_genai import ChatGoogleGenerativeAI
 from datetime import datetime
+import time
 
+# Constants
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+EMBEDDING_MODEL = "models/embedding-001"
+RETRIEVER_K = 4
+DEFAULT_SYSTEM_MESSAGE = """
+You are YouTube RAG Assistant 📺🤖. 
+Your role is to help users understand and explore the content of YouTube videos by using the retrieved transcript context. 
+
+Follow these rules:
+1. Always prioritize the transcript/context when answering questions about the video. 
+   - Summarize, explain, or extract details only from the retrieved text.
+   - If the answer is not present in the transcript, clearly say you don’t know.
+   
+2. Also maintain awareness of the ongoing chat history (previous user and assistant messages in this session). 
+   - If the user asks about their previous messages, use the chat history instead of the transcript.
+   - For example, if the user asks “what is my name” and they told you earlier, answer from the chat history.
+
+3. Never invent facts. If the context or chat history does not contain the answer, politely say you don’t know. 
+
+4. Keep your tone friendly, clear, and concise. 
+   - Use bullet points or short paragraphs if the answer is long. 
+   - Do not repeat the system instructions in your answers.
+"""
 
 # Load environment variables
 load_dotenv()
@@ -38,17 +62,12 @@ except RuntimeError:
 def init_session_state():
     """Initialize all session state variables"""
     if "messages" not in st.session_state:
-        st.session_state.messages = [
-            SystemMessage(content="""You are a helpful AI assistant specialized in answering questions about YouTube videos. 
-        Use the provided context chunks as your main source of truth. 
-        If the context does not contain the answer, politely say you don’t know instead of making things up.
-        If the question is not related to the video, politely inform the user that you can only answer questions related to the video.
-        """)
-        ]
-    if 'chat_history' not in st.session_state:
+        st.session_state.messages = [SystemMessage(content=DEFAULT_SYSTEM_MESSAGE)]
+    if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
-    if 'current_video_id' not in st.session_state:
+    if "current_video_id" not in st.session_state:
         st.session_state.current_video_id = None
+
 
 def configure_page():
     st.set_page_config(
@@ -60,10 +79,27 @@ def configure_page():
     st.title("⚡YouTube x RAG Assistant")
     st.markdown("### Transform any YouTube video into an interactive conversation")
 
+
+def handle_new_video_button():
+    """Clear current video and start fresh"""
+    if st.sidebar.button("🔄 New Video", use_container_width=True):
+        # Clear video-related session state
+        if "retriever" in st.session_state:
+            del st.session_state["retriever"]
+        if "current_video_id" in st.session_state:
+            st.session_state.current_video_id = None
+
+        st.session_state.messages = [SystemMessage(content=DEFAULT_SYSTEM_MESSAGE)]
+
+        st.success("🔄 Ready for new video!")
+        time.sleep(1)
+        st.rerun()
+
+
 def handle_sidebar():
     # Sidebar for API key
     st.sidebar.header("🔑 Configuration")
-    
+
     api_key = st.sidebar.text_input(
         "Your Google Gemini API Key",
         type="password",
@@ -88,27 +124,27 @@ def handle_sidebar():
     st.sidebar.divider()
 
     selected_model = st.sidebar.selectbox(
-            "Generation Models",
-            [
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-2.5-flash-image-preview",
-                "gemini-live-2.5-flash-preview",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-lite",
-                "gemini-2.0-flash-001",
-                "gemini-2.0-flash-lite-001",
-                "gemini-2.0-flash-live-001",
-                "gemini-2.0-flash-live-preview-04-09",
-                "gemini-2.0-flash-preview-image-generation",
-                "gemini-1.5-flash",
-                "gemini-1.5-pro"
-            ],
-            index=0,
-            help="Choose the Gemini model for generation"
-        )
-    
+        "Generation Models",
+        [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash-image-preview",
+            "gemini-live-2.5-flash-preview",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash-001",
+            "gemini-2.0-flash-lite-001",
+            "gemini-2.0-flash-live-001",
+            "gemini-2.0-flash-live-preview-04-09",
+            "gemini-2.0-flash-preview-image-generation",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+        ],
+        index=0,
+        help="Choose the Gemini model for generation",
+    )
+
     st.session_state.model = selected_model
 
     st.sidebar.divider()
@@ -118,13 +154,7 @@ def handle_sidebar():
     col1, col2 = st.sidebar.columns(2)
     with col1:
         if st.button("🗑️ Clear Chat", use_container_width=True):
-            st.session_state.messages = [
-                SystemMessage(content="""You are a helpful AI assistant specialized in answering questions about YouTube videos. 
-            Use the provided context chunks as your main source of truth. 
-            If the context does not contain the answer, politely say you don’t know instead of making things up.
-            If the question is not related to the video, politely inform the user that you can only answer questions related to the video."""
-            )
-            ]
+            st.session_state.messages = [SystemMessage(content=DEFAULT_SYSTEM_MESSAGE)]
             st.rerun()
 
     with col2:
@@ -133,11 +163,27 @@ def handle_sidebar():
             st.cache_resource.clear()
             st.success("Cache cleared!")
 
+    handle_new_video_button()
+
     st.sidebar.divider()
     st.sidebar.subheader("📊 Session Info")
 
     message_count = len(st.session_state.messages) - 1  # Exclude system message
-    st.sidebar.metric("Messages", message_count)
+    video_processed = (
+        "retriever" in st.session_state
+        and st.session_state.get("retriever") is not None
+    )
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("Messages", message_count)
+    with col2:
+        st.metric("Video", "✅" if video_processed else "❌")
+
+    if video_processed:
+        st.sidebar.success("🎥 Video ready for chat")
+    else:
+        st.sidebar.info("📹 No video processed yet")
 
     st.sidebar.info(f"**Current Model:**\n{selected_model}")
 
@@ -159,82 +205,121 @@ def handle_sidebar():
 
     # Main interface
     video_url = st.text_input(
-        "🔗 YouTube Video URL",
-        placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
+        "🔗 YouTube Video URL", placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
     )
     video_id = extract_video_id(video_url) if video_url else ""
     st.session_state.current_video_id = video_id
-    return selected_model,video_id,st.session_state.get("api_key")
+
+    if video_id:
+        display_video_info(video_id)
+    elif video_url and not video_id:
+        st.error("❌ Invalid YouTube URL format")
+        st.info("💡 Please use: youtube.com/watch?v=... or youtu.be/...")
+
+    return selected_model, video_id, st.session_state.get("api_key")
+
 
 def extract_video_id(url_or_id: str) -> str:
     """Extract video ID from YouTube URL or return ID if already provided"""
-    if 'youtube.com/watch?v=' in url_or_id:
-        return url_or_id.split('v=')[1].split('&')[0]
-    elif 'youtu.be/' in url_or_id:
-        return url_or_id.split('youtu.be/')[1].split('?')[0]
+    if "youtube.com/watch?v=" in url_or_id:
+        video_id = url_or_id.split("v=")[1].split("&")[0]
+    elif "youtu.be/" in url_or_id:
+        video_id = url_or_id.split("youtu.be/")[1].split("?")[0]
     else:
-        return url_or_id  # Assume it's already an ID
+        video_id = url_or_id  # Assume it's already an ID
+
+    if len(video_id) == 11:
+        return video_id
+    else:
+        return ""
+
+
+def display_video_info(video_id: str):
+    """Display basic video information"""
+    if video_id:
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            # Show video thumbnail
+            thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+            st.image(thumbnail_url, width=200)
+
+        with col2:
+            st.success("✅ Valid YouTube URL detected!")
+            st.info(f"📺 Video ID: `{video_id}`")
+            st.markdown(
+                f"🔗 [Open in YouTube](https://www.youtube.com/watch?v={video_id})"
+            )
+
 
 def handle_video_processing(video_id=""):
     if st.button("🚀 Process Video", type="primary"):
         if not video_id:
-            st.error("❌ Please enter a YouTube URL!")
+            st.error("❌ Please enter a valid YouTube URL!")
+            st.info(
+                "💡 Supported formats:\n- https://www.youtube.com/watch?v=VIDEO_ID\n- https://youtu.be/VIDEO_ID\n- VIDEO_ID"
+            )
+            return
         else:
             with st.spinner("Processing video..."):
-                st.info("🔄 Extracting transcript...")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
                 # Step 1: Extract transcript
                 status_text.text("🔄 Step 1/4: Extracting transcript...")
                 progress_bar.progress(25)
-                # try:
-                #     ytt_api = YouTubeTranscriptApi()
-                #     transcript_list = ytt_api.fetch(video_id)
-                #     transcript = " ".join(snippet.text for snippet in transcript_list)
-                # except TranscriptsDisabled:
-                #     st.error("❌ Transcripts are disabled for this video.")
-                #     st.stop()
-                # except Exception as e:
-                #     st.error(f"❌ An error occurred: {e}")
-                #     st.stop()
-                with open("transcript.txt", "r") as f:
-                    transcript = f.read()
+                try:
+                    ytt_api = YouTubeTranscriptApi()
+                    transcript_list = ytt_api.fetch(video_id)
+                    transcript = " ".join(snippet.text for snippet in transcript_list)
+                except TranscriptsDisabled:
+                    st.error("❌ Transcripts are disabled for this video.")
+                    st.stop()
+                except Exception as e:
+                    st.error(f"❌ An error occurred. This video is not transcribed:(")
+                    st.stop()
 
                 # Step 2: Split into chunks and create vector store
                 status_text.text("📄 Step 2/4: Splitting into chunks...")
                 progress_bar.progress(50)
                 splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=1000,
-                    chunk_overlap=200,
+                    chunk_size=CHUNK_SIZE,
+                    chunk_overlap=CHUNK_OVERLAP,
                 )
                 chunks = splitter.create_documents([transcript])
 
                 # Step 3: Create embeddings
                 status_text.text("🧠 Step 3/4: Creating embeddings...")
                 progress_bar.progress(75)
-                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+                embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
                 # Step 4: Build vector store
                 status_text.text("🗂️ Step 4/4: Building search index...")
                 progress_bar.progress(100)
-                vector_store = FAISS.from_documents(chunks,embeddings)
+                vector_store = FAISS.from_documents(chunks, embeddings)
                 # vector_store.index_to_docstore_id
-                retriever = vector_store.as_retriever(search_type="similarity",search_kwargs={"k":4})
-                st.session_state['retriever'] = retriever
+                retriever = vector_store.as_retriever(
+                    search_type="similarity", search_kwargs={"k": RETRIEVER_K}
+                )
+                st.session_state["retriever"] = retriever
                 # Clear progress indicators
                 progress_bar.empty()
                 status_text.empty()
-                st.rerun()
+
+                # Re-run to update UI state
                 st.success("✅ Video processed! Ready for questions.")
+                time.sleep(2)
+                st.rerun()
+
 
 def format_docs(retrieved_docs):
-  context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
-  return context_text
+    context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
+    return context_text
+
 
 @st.cache_resource()
-def get_chat_model(model_name:str, api_key_keyed_for_cache: str | None):
+def get_chat_model(model_name: str, api_key_keyed_for_cache: str | None):
     # api_key_keyed_for_cache is unused except for cache key isolation across different keys
-    return ChatGoogleGenerativeAI(model=model_name)
+    return ChatGoogleGenerativeAI(model=model_name, streaming=True)
+
 
 def display_chat_messages():
     for message in st.session_state.messages[1:]:
@@ -246,92 +331,114 @@ def display_chat_messages():
             with st.chat_message("assistant"):
                 st.write(message.content)
 
+
 def handle_user_input(chat_model, input_disabled: bool = False):
-    if prompt := st.chat_input("Ask a question about the video...", disabled=input_disabled):
+    if prompt := st.chat_input(
+        "Ask a question about the video...", disabled=input_disabled
+    ):
+        if not prompt.strip():
+            st.warning("Please type a message before sending!")
+            return
+
         st.session_state.messages.append(HumanMessage(content=prompt))
-        
+
         prompt_template = PromptTemplate(
-            template = """
-                You are a helpful assistant.
-                Answer ONLY from the provided transcript context.
-                If the context is insufficient, just say you don't know.
+            template="""Based on this video transcript content:
 
-                {context}
+            {context}
 
-                Question: {question}
-                """,
-                input_variables=["context","question"]
-            )
+            Question: {question}""",
+            input_variables=["context", "question"],
+        )
 
         with st.chat_message("user"):
-            retriever = st.session_state.get('retriever')
-            if prompt and prompt.strip():
-                st.write(prompt)
-            elif prompt == "":
-                st.warning("Please type a message before sending!")
-            if not retriever:
-                st.error("❌ Please process a video first!")
-            else:
-                retrieved_docs = retriever.invoke(prompt)
-                parallel_chain = RunnableParallel({
-                    'context': retriever | RunnableLambda(format_docs),
-                    'question': RunnablePassthrough()
-                }
+            st.write(prompt)
+
+        retriever = st.session_state.get("retriever")
+        if not retriever:
+            with st.chat_message("assistant"):
+                error_msg = (
+                    "❌ Please process a video first to enable question answering."
                 )
-                parser = StrOutputParser()
-                main_chain = parallel_chain | prompt_template | chat_model | parser
-
+                st.error(error_msg)
+                st.session_state.messages.append(AIMessage(content=error_msg))
+            return
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+            with st.spinner("🤔 Analyzing video content..."):
                 try:
-                    message_placeholder = st.empty()
-                    full_response = main_chain.invoke(prompt)
+                    retrieved_docs = retriever.invoke(prompt)
+                    if not retrieved_docs:
+                        no_context_msg = "🤷‍♂️ I couldn't find relevant information in the video transcript for your question."
+                        st.warning(no_context_msg)
+                        st.session_state.messages.append(
+                            AIMessage(content=no_context_msg)
+                        )
+                        return
+                    parallel_chain = RunnableParallel(
+                        {
+                            "context": retriever | RunnableLambda(format_docs),
+                            "question": RunnablePassthrough(),
+                        }
+                    )
+                    parser = StrOutputParser()
+                    main_chain = parallel_chain | prompt_template | chat_model | parser
 
-                    message_placeholder.markdown(full_response)
-                    # Only add the message once, and only if there's content
-                    if full_response.strip():
+                    message_placeholder = st.empty()
+                    full_response = ""
+
+                    # Stream the response using stream method (synchronous)
+                    for chunk in main_chain.stream(prompt):
+                        if chunk and chunk.strip():
+                            full_response += chunk
+                            message_placeholder.markdown(
+                                full_response + "▌"
+                            )  # Cursor indicator
+
+                    # Remove cursor and display final response
+                    if full_response and full_response.strip():
+                        message_placeholder.markdown(full_response)
                         st.session_state.messages.append(
                             AIMessage(content=full_response)
                         )
                     else:
-                        st.error(
-                            "🚫 No response received. This model might not be working. Please try a different model."
+                        error_msg = (
+                            "🚫 No response received. Please try a different model."
                         )
-                        
+                        message_placeholder.error(error_msg)
+                        st.session_state.messages.append(AIMessage(content=error_msg))
+
+                    # Rerun to refresh the UI after streaming
+                    st.rerun()
+
                 except Exception as e:
                     error_message = str(e).lower()
                     if "not found" in error_message or "invalid" in error_message:
-                        st.error(
-                            "❌ This model is not available or has been deprecated. Please select a different model."
-                        )
+                        error_msg = "❌ This model is not available. Please select a different model."
                     elif "quota" in error_message or "limit" in error_message:
-                        st.error(
-                            "📊 API quota exceeded. Please try again later or use a different model."
-                        )
+                        error_msg = "📊 API quota exceeded. Please try again later or use a different model."
                     elif "timeout" in error_message:
-                        st.error(
-                            "⏱️ Request timed out. This model might be overloaded. Try a different model."
+                        error_msg = (
+                            "⏱️ Request timed out. Try a different model or try again."
                         )
-                st.rerun()
+                    else:
+                        error_msg = f"❌ An error occurred: {str(e)}"
+
+                    st.error(error_msg)
+                    st.session_state.messages.append(AIMessage(content=error_msg))
+            # st.rerun()
+
 
 init_session_state()
 configure_page()
-selected_model,video_id,user_api_key = handle_sidebar()
+selected_model, video_id, user_api_key = handle_sidebar()
 handle_video_processing(video_id)
 chat_model = None
 if user_api_key:
     # Ensure env var is set for the underlying client
     os.environ["GOOGLE_API_KEY"] = user_api_key
-    chat_model = get_chat_model(selected_model,user_api_key)
+    chat_model = get_chat_model(selected_model, user_api_key)
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [SystemMessage(content="""You are a helpful AI assistant specialized in answering questions about YouTube videos. 
-        Use the provided context chunks as your main source of truth. 
-        If the context does not contain the answer, politely say you don’t know instead of making things up.
-        If the question is not related to the video, politely inform the user that you can only answer questions related to the video.
-        """)]
 
-    
 display_chat_messages()
 
 if chat_model is None:
@@ -339,4 +446,4 @@ if chat_model is None:
         "Please enter your Google Gemini API key in the sidebar to start chatting."
     )
 
-handle_user_input(chat_model,input_disabled=(chat_model is None))
+handle_user_input(chat_model, input_disabled=(chat_model is None))
