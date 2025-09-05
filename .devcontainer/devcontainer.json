@@ -1,0 +1,8 @@
+// .devcontainer/devcontainer.json
+{
+    "name": "YouTube RAG Dev",
+    "build": {
+        "context": "..",
+        "dockerfile": "../Dockerfile.dev"
+    }
+}
