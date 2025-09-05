@@ -182,6 +182,12 @@ def handle_video_processing(video_id=""):
         else:
             with st.spinner("Processing video..."):
                 st.info("🔄 Extracting transcript...")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                # Step 1: Extract transcript
+                status_text.text("🔄 Step 1/4: Extracting transcript...")
+                progress_bar.progress(25)
                 # try:
                 #     ytt_api = YouTubeTranscriptApi()
                 #     transcript_list = ytt_api.fetch(video_id)
@@ -194,16 +200,30 @@ def handle_video_processing(video_id=""):
                 #     st.stop()
                 with open("transcript.txt", "r") as f:
                     transcript = f.read()
+
+                # Step 2: Split into chunks and create vector store
+                status_text.text("📄 Step 2/4: Splitting into chunks...")
+                progress_bar.progress(50)
                 splitter = RecursiveCharacterTextSplitter(
                     chunk_size=1000,
                     chunk_overlap=200,
                 )
                 chunks = splitter.create_documents([transcript])
+
+                # Step 3: Create embeddings
+                status_text.text("🧠 Step 3/4: Creating embeddings...")
+                progress_bar.progress(75)
                 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+                # Step 4: Build vector store
+                status_text.text("🗂️ Step 4/4: Building search index...")
+                progress_bar.progress(100)
                 vector_store = FAISS.from_documents(chunks,embeddings)
                 # vector_store.index_to_docstore_id
                 retriever = vector_store.as_retriever(search_type="similarity",search_kwargs={"k":4})
                 st.session_state['retriever'] = retriever
+                # Clear progress indicators
+                progress_bar.empty()
+                status_text.empty()
                 st.rerun()
                 st.success("✅ Video processed! Ready for questions.")
 
