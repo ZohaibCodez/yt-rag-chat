@@ -10,7 +10,7 @@ dependencies = [
     "langchain-community>=0.3.29",
     "langchain-google-genai>=2.1.10",
     "python-dotenv>=1.1.1",
-    "streamlit>=1.49.1",
+    "streamlit>=1.28.0,<2.0.0",
     "tiktoken>=0.11.0",
     "youtube-transcript-api>=1.2.2",
 ]
