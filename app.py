@@ -253,7 +253,12 @@ def display_video_info(video_id: str):
 
 def handle_video_processing(video_id=""):
     if st.button("🚀 Process Video", type="primary"):
-        if not video_id:
+        user_api_key = st.session_state.get("api_key", "")
+        if not user_api_key:
+            st.error("❌ Please enter your Google Gemini API key in the sidebar first!")
+            st.info("💡 You need a valid API key to process videos and chat")
+            return
+        elif not video_id:
             st.error("❌ Please enter a valid YouTube URL!")
             st.info(
                 "💡 Supported formats:\n- https://www.youtube.com/watch?v=VIDEO_ID\n- https://youtu.be/VIDEO_ID\n- VIDEO_ID"
@@ -421,7 +426,7 @@ def handle_user_input(chat_model, input_disabled: bool = False):
                             "⏱️ Request timed out. Try a different model or try again."
                         )
                     else:
-                        error_msg = f"❌ An error occurred: {str(e)}"
+                        error_msg = f"❌ An error occurred. Try selecting different model or check your api key:("
 
                     st.error(error_msg)
                     st.session_state.messages.append(AIMessage(content=error_msg))
