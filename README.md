@@ -10,10 +10,15 @@
 ![Last Commit](https://img.shields.io/github/last-commit/ZohaibCodez/yt-rag-chat)
 [![Stars](https://img.shields.io/github/stars/ZohaibCodez/yt-rag-chat?style=social)](https://github.com/ZohaibCodez/yt-rag-chat/stargazers)
 [![Forks](https://img.shields.io/github/forks/ZohaibCodez/yt-rag-chat?style=social)](https://github.com/ZohaibCodez/yt-rag-chat/network/members)
+[![Live Demo](https://img.shields.io/badge/demo-online-green.svg)](https://sragchat.streamlit.app)
 
 ## 🎯 Overview
 
 YouTube RAG Assistant is a Streamlit web application that enables you to have intelligent conversations with YouTube video content. Simply provide a YouTube URL, and the app will process the video's transcript to create a searchable knowledge base that you can query using natural language.
+
+## 🌐 Live Demo
+
+Try it out here: [YouTube RAG Assistant Live Demo](https://sragchat.streamlit.app)
 
 ## ✨ Features
 
