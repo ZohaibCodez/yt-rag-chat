@@ -323,7 +323,7 @@ def format_docs(retrieved_docs):
 @st.cache_resource()
 def get_chat_model(model_name: str, api_key_keyed_for_cache: str | None):
     # api_key_keyed_for_cache is unused except for cache key isolation across different keys
-    return ChatGoogleGenerativeAI(model=model_name, streaming=True)
+    return ChatGoogleGenerativeAI(model=model_name)
 
 
 def display_chat_messages():
