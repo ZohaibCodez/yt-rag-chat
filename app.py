@@ -310,20 +310,18 @@ def handle_video_processing(video_id=""):
                 # Step 1: Extract transcript
                 status_text.text("🔄 Step 1/4: Extracting transcript...")
                 progress_bar.progress(25)
-                # try:
-                #     ytt_api = YouTubeTranscriptApi()
-                #     transcript_list = ytt_api.fetch(video_id)
-                #     transcript = " ".join(snippet.text for snippet in transcript_list)
-                # except TranscriptsDisabled:
-                #     st.error("❌ Transcripts are disabled for this video.")
-                #     st.stop()
-                # except Exception as e:
-                #     st.error(
-                #         f"❌ An error occurred. This video is not transcribed:(\nWe couldn’t fetch the transcript. YouTube may be blocking requests from your current network. Please try again later or switch to another connection"
-                #     )
-                #     st.stop()
-                with open("data/demo_transcript.txt","r") as f:
-                    transcript = f.read()
+                try:
+                    ytt_api = YouTubeTranscriptApi()
+                    transcript_list = ytt_api.fetch(video_id)
+                    transcript = " ".join(snippet.text for snippet in transcript_list)
+                except TranscriptsDisabled:
+                    st.error("❌ Transcripts are disabled for this video.")
+                    st.stop()
+                except Exception as e:
+                    st.error(
+                        f"❌ An error occurred. This video is not transcribed:(\nWe couldn’t fetch the transcript. YouTube may be blocking requests from your current network. Please try again later or switch to another connection"
+                    )
+                    st.stop()
 
                 # Step 2: Split into chunks and create vector store
                 status_text.text("📄 Step 2/4: Splitting into chunks...")
