@@ -79,6 +79,40 @@ def configure_page():
     st.title("⚡YouTube x RAG Assistant")
     st.markdown("### Transform any YouTube video into an interactive conversation")
 
+def center_app():
+    st.markdown(
+        """
+        <style>
+        /* Center the main content */
+        .block-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            max-width: 800px; /* prevent content from stretching too wide */
+            margin: auto;
+        }
+
+        /* Center text inputs and buttons */
+        .stTextInput, .stButton {
+            width: 100% !important;
+            # max-width: 500px;
+            margin: auto;
+        }
+
+        @media (max-width: 768px) {
+                .stVerticalBlock{
+                align-items:center;
+                }
+            }
+        
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 
 def handle_new_video_button():
     """Clear current video and start fresh"""
@@ -241,7 +275,7 @@ def display_video_info(video_id: str):
         with col1:
             # Show video thumbnail
             thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
-            st.image(thumbnail_url, width=200)
+            st.image(thumbnail_url, width="stretch")
 
         with col2:
             st.success("✅ Valid YouTube URL detected!")
@@ -280,8 +314,9 @@ def handle_video_processing(video_id=""):
                     st.error("❌ Transcripts are disabled for this video.")
                     st.stop()
                 except Exception as e:
-                    st.error(f"❌ An error occurred. This video is not transcribed:(")
-                    st.error(e)
+                    st.error(
+                        f"❌ An error occurred. This video is not transcribed:(\nWe couldn’t fetch the transcript. YouTube may be blocking requests from your current network. Please try again later or switch to another connection"
+                    )
                     st.stop()
 
                 # Step 2: Split into chunks and create vector store
@@ -436,6 +471,7 @@ def handle_user_input(chat_model, input_disabled: bool = False):
 
 init_session_state()
 configure_page()
+center_app()
 selected_model, video_id, user_api_key = handle_sidebar()
 handle_video_processing(video_id)
 chat_model = None
