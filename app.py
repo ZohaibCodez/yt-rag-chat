@@ -2,7 +2,6 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from streamlit import components
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -23,7 +22,6 @@ from langchain_core.messages import (
 from langchain_google_genai import ChatGoogleGenerativeAI
 from datetime import datetime
 import time
-import streamlit.components.v1 as components
 
 # Constants
 CHUNK_SIZE = 1000
@@ -63,7 +61,6 @@ except RuntimeError:
 # Initialize session state
 def init_session_state():
     """Initialize all session state variables"""
-    console_log("🚀 Streamlit app started!")
     if "messages" not in st.session_state:
         st.session_state.messages = [SystemMessage(content=DEFAULT_SYSTEM_MESSAGE)]
     if "chat_history" not in st.session_state:
@@ -81,16 +78,6 @@ def configure_page():
 
     st.title("⚡YouTube x RAG Assistant")
     st.markdown("### Transform any YouTube video into an interactive conversation")
-
-def console_log(message: str):
-    components.html(
-        f"""
-        <script>
-            console.log({repr(message)});
-        </script>
-        """,
-        height=0,
-    )
 
 def center_app():
     st.markdown(
@@ -329,13 +316,11 @@ def handle_video_processing(video_id=""):
                     transcript = " ".join(snippet.text for snippet in transcript_list)
                 except TranscriptsDisabled:
                     st.error("❌ Transcripts are disabled for this video.")
-                    console_log(e)
                     st.stop()
                 except Exception as e:
                     st.error(
                         f"❌ An error occurred. This video is not transcribed:(\nWe couldn’t fetch the transcript. YouTube may be blocking requests from your current network. Please try again later or switch to another connection"
                     )
-                    st.error(e)
                     st.stop()
 
                 # Step 2: Split into chunks and create vector store
