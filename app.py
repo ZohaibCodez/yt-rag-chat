@@ -281,6 +281,7 @@ def handle_video_processing(video_id=""):
                     st.stop()
                 except Exception as e:
                     st.error(f"❌ An error occurred. This video is not transcribed:(")
+                    st.error(e)
                     st.stop()
 
                 # Step 2: Split into chunks and create vector store
